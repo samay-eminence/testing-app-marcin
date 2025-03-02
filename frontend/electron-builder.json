@@ -1,0 +1,29 @@
+{
+    "appId": "com.example.myapp",
+    "productName": "MyApp",
+    "directories": {
+        "output": "dist"
+    },
+    "files": [
+        "**/*",
+        "!node_modules",
+        "!dist"
+    ],
+    "extraResources": [
+        {
+            "from": "../nodejs",
+            "to": "resources/nodejs"
+        },
+        {
+            "from": "../fastapi",
+            "to": "resources/fastapi"
+        }
+    ],
+    "linux": {
+        "target": "deb",
+        "category": "Utility",
+        "maintainer": "Your Name <your@email.com>",
+        "synopsis": "Electron App with Node.js and FastAPI",
+        "executableName": "testing-app-marcin"
+    }
+}

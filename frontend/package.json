@@ -1,0 +1,18 @@
+{
+    "name": "testing-app-marcin",
+    "version": "1.0.0",
+    "description": "Electron App with Node.js and FastAPI backend",
+    "author": {
+        "name": "Your Name",
+        "email": "your@email.com"
+    },
+    "homepage": "https://yourprojecthomepage.com",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron ."
+    },
+    "devDependencies": {
+        "electron": "26.6.10",
+        "electron-builder": "^25.1.8"
+    }
+}
