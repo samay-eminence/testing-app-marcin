@@ -98,7 +98,12 @@ export NVM_DIR="$HOME/.nvm"
 
 // ✅ Function to Install Anaconda (Miniconda)
 function installConda() {
-  if (!commandExists("conda")) {
+  // Check if Miniconda folder exists (this means it's already installed)
+  if (fs.existsSync(condaDir)) {
+    console.log(
+      `✅ Miniconda is already installed at ${condaDir}. Skipping installation.`
+    );
+  } else {
     console.log("🚀 Installing Miniconda...");
     const condaInstaller = isWindows
       ? "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
@@ -108,20 +113,43 @@ function installConda() {
       ? `powershell -Command \"Start-Process -FilePath '${condaInstaller}' -ArgumentList '/S /D=C:\\Miniconda3' -Wait\"`
       : `wget ${condaInstaller} -O miniconda.sh && bash miniconda.sh -b -p ${condaDir}`;
 
-    execSync(installCmd, { shell: true, stdio: "inherit" });
-    console.log("✅ Miniconda installed.");
+    try {
+      execSync(installCmd, { shell: true, stdio: "inherit" });
+      console.log("✅ Miniconda installed.");
+    } catch (error) {
+      console.error("❌ Error installing Miniconda:", error.message);
+      return; // Stop further execution if installation fails
+    }
+  }
+
+  // Ensure Conda is accessible
+  if (!commandExists("conda")) {
+    console.error("❌ Conda is not found after installation. Check your PATH.");
+    return;
   }
 
   console.log("📦 Setting up Conda environment...");
-  execSync("conda create --yes --name myenv python=3.9", {
-    shell: true,
-    stdio: "inherit",
-  });
-  console.log("✅ Conda environment 'myenv' ready.");
+  try {
+    execSync("conda info", { shell: true, stdio: "ignore" }); // Check if Conda is working
+    execSync(
+      "conda create --yes --name myenv python=3.9 || echo 'Environment exists, skipping creation'",
+      {
+        shell: true,
+        stdio: "inherit",
+      }
+    );
+    console.log("✅ Conda environment 'myenv' ready.");
+  } catch (error) {
+    console.error(
+      "⚠️ Conda environment 'myenv' already exists or failed to create."
+    );
+  }
 }
 
 // ✅ Automated Setup for Dependencies
 async function setupDependencies() {
+  process.env.PATH = `${condaDir}/bin:${process.env.PATH}`;
+
   try {
     fixBrokenPackages();
 
@@ -131,7 +159,7 @@ async function setupDependencies() {
       console.log("✅ Node.js is already installed.");
     }
 
-    if (!commandExists("conda")) {
+    if (!fs.existsSync(condaDir) || !commandExists(`${condaDir}/bin/conda`)) {
       installConda();
     } else {
       console.log("✅ Conda is already installed.");
@@ -169,7 +197,7 @@ app.whenReady().then(() => {
 
   const condaActivateCmd = isWindows
     ? `call ${condaDir}\\Scripts\\activate.bat myenv && `
-    : `bash -c "source ${condaDir}/bin/activate myenv && pip install -r ${requirementsFile}"`;
+    : `bash -c "${condaDir}/bin/conda run -n myenv pip install -r ${requirementsFile}"`;
 
   // ✅ Install Node.js Dependencies
 
@@ -192,7 +220,7 @@ app.whenReady().then(() => {
 
   // ✅ Install Python Dependencies
   if (fs.existsSync(requirementsFile)) {
-    const checkPythonDeps = `bash -c "source ${condaDir}/bin/activate myenv && python -c 'import fastapi, uvicorn, requests, torch, transformers'"`;
+    const checkPythonDeps = `${condaDir}/bin/conda run -n myenv python -c "import fastapi, uvicorn, requests, torch, transformers"`;
 
     try {
       execSync(checkPythonDeps, { shell: true, stdio: "ignore" });
@@ -217,15 +245,11 @@ app.whenReady().then(() => {
 
   if (!isProcessRunning("app.py")) {
     pythonProcess = spawn(
-      "bash",
-      [
-        "-c",
-        `source ${condaDir}/bin/activate myenv && python ${fastapiPath}/app.py`,
-      ],
+      `${condaDir}/bin/conda`,
+      ["run", "-n", "myenv", "python", `${fastapiPath}/app.py`],
       {
         detached: true,
         stdio: "ignore",
-        shell: true,
       }
     );
     pythonProcess.unref();
