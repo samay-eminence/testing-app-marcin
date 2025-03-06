@@ -23,8 +23,6 @@ app.whenReady().then(() => {
     webPreferences: { nodeIntegration: true },
   });
 
-  mainWindow.loadURL("http://localhost:3000");
-
   setupDependencies();
 
   checkPostgresRunning(); // ✅ Start PostgreSQL
@@ -38,6 +36,8 @@ app.whenReady().then(() => {
   checkBackendProcessesRunning(backendProcess);
 
   checkPythonProcessesRunning(pythonProcess);
+
+  mainWindow.loadURL("http://localhost:3000");
 });
 
 // ✅ Graceful Shutdown
