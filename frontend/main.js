@@ -3,12 +3,18 @@ const {
   checkNodeDependencies,
   checkPythonDependencies,
   setupDependencies,
+  checkPostgresRunning,
+  checkOllamaRunning,
   checkBackendProcessesRunning,
   checkPythonProcessesRunning,
 } = require("./execUtils");
 
+const isMac = process.platform === "darwin";
+
 let backendProcess;
 let pythonProcess;
+let postgresProcess;
+let ollamaProcess;
 
 app.whenReady().then(() => {
   const mainWindow = new BrowserWindow({
@@ -21,6 +27,10 @@ app.whenReady().then(() => {
 
   setupDependencies();
 
+  checkPostgresRunning(); // ✅ Start PostgreSQL
+
+  checkOllamaRunning(ollamaProcess); // ✅ Start Ollama
+
   checkNodeDependencies();
 
   checkPythonDependencies();
@@ -32,6 +42,8 @@ app.whenReady().then(() => {
 
 // ✅ Graceful Shutdown
 app.on("window-all-closed", () => {
+  if (postgresProcess) postgresProcess.kill();
+  if (ollamaProcess) ollamaProcess.kill();
   if (backendProcess) backendProcess.kill();
   if (pythonProcess) pythonProcess.kill();
   if (!isMac) app.quit();

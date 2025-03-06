@@ -4,7 +4,6 @@ const path = require("path");
 
 // ✅ Detect Platform
 const isWindows = process.platform === "win32";
-const isMac = process.platform === "darwin";
 
 // ✅ Get Home Directory
 const homeDir = process.env.HOME || process.env.USERPROFILE;
@@ -93,6 +92,27 @@ export NVM_DIR="$HOME/.nvm"
   console.log("✅ Node.js installed via NVM.");
 }
 
+// ✅ Function to Check PostgreSQL Installation
+function installPostgres() {
+  if (!commandExists("psql")) {
+    console.log("🚀 Installing PostgreSQL...");
+
+    const installCmd = isWindows
+      ? 'powershell -Command "choco install postgresql -y"'
+      : "sudo apt update && sudo apt install -y postgresql postgresql-contrib";
+
+    try {
+      execSync(installCmd, { shell: true, stdio: "inherit" });
+      console.log("✅ PostgreSQL installed.");
+    } catch (error) {
+      console.error("❌ Error installing PostgreSQL:", error.message);
+      return;
+    }
+  }
+
+  console.log("✅ PostgreSQL is installed.");
+}
+
 // ✅ Function to Install Anaconda (Miniconda)
 function installConda() {
   // Check if Miniconda folder exists (this means it's already installed)
@@ -153,6 +173,116 @@ function isProcessRunning(name) {
     return false;
   }
 }
+// ✅ Function to Start PostgreSQL Service and Ensure Authentication Works
+function checkPostgresRunning() {
+  try {
+    const isRunning = isProcessRunning("postgres");
+    if (!isRunning) {
+      console.log("🚀 Starting PostgreSQL...");
+      const startCmd = isWindows
+        ? 'powershell -Command "Start-Service postgresql"'
+        : "sudo systemctl restart postgresql"; // 🔄 Restart to apply changes
+
+      execSync(startCmd, { shell: true, stdio: "inherit" });
+      console.log("✅ PostgreSQL started.");
+    } else {
+      console.log("✅ PostgreSQL is already running.");
+    }
+
+    // ✅ Force password authentication for PostgreSQL
+    console.log("🔧 Ensuring PostgreSQL uses password authentication...");
+    try {
+      execSync(
+        `sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'Admin@1234';"`,
+        { stdio: "inherit" }
+      );
+      console.log("✅ PostgreSQL password authentication set.");
+    } catch (error) {
+      console.error("⚠️ Failed to set PostgreSQL password:", error.message);
+    }
+
+    // ✅ Create database and user (using password authentication)
+    console.log("📦 Setting up PostgreSQL database and user...");
+    const createUserCmd = `PGPASSWORD="Admin@1234" psql -U postgres -h localhost -c "CREATE USER root WITH PASSWORD 'Admin@1234';" || echo 'User already exists'`;
+    const createDbCmd = `PGPASSWORD="Admin@1234" psql -U postgres -h localhost -c "CREATE DATABASE marcin OWNER root;" || echo 'Database already exists'`;
+
+    execSync(createUserCmd, { shell: true, stdio: "inherit" });
+    execSync(createDbCmd, { shell: true, stdio: "inherit" });
+
+    console.log("✅ PostgreSQL setup completed.");
+  } catch (error) {
+    console.error("❌ Error starting PostgreSQL:", error.message);
+  }
+}
+
+// ✅ Function to Start Ollama Service
+function checkOllamaRunning(ollamaProcess) {
+  try {
+    const isRunning = isProcessRunning("ollama");
+    if (!isRunning) {
+      console.log("🚀 Starting Ollama...");
+
+      ollamaProcess = spawn("ollama", ["serve"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      ollamaProcess.unref();
+
+      console.log("✅ Ollama started on port 11434.");
+    } else {
+      console.log("✅ Ollama is already running.");
+    }
+  } catch (error) {
+    console.error("❌ Error starting Ollama:", error.message);
+  }
+}
+
+function fixPostgresAuthentication() {
+  try {
+    console.log("🔧 Checking PostgreSQL authentication mode...");
+
+    // Get PostgreSQL version dynamically
+    const postgresVersion = execSync(
+      "ls /etc/postgresql/ | sort -nr | head -n1",
+      { encoding: "utf8" }
+    ).trim();
+    const pgHbaPath = `/etc/postgresql/${postgresVersion}/main/pg_hba.conf`;
+
+    if (!fs.existsSync(pgHbaPath)) {
+      console.error("❌ PostgreSQL pg_hba.conf not found. Skipping fix.");
+      return;
+    }
+
+    console.log(`📄 Found pg_hba.conf at: ${pgHbaPath}`);
+
+    // Use sudo to read and write pg_hba.conf
+    let pgHbaContent = execSync(`sudo cat ${pgHbaPath}`, { encoding: "utf8" });
+
+    if (pgHbaContent.includes("local   all   postgres   peer")) {
+      console.log("⚠️ Detected 'peer' authentication. Updating to 'md5'...");
+
+      pgHbaContent = pgHbaContent.replace(
+        /local\s+all\s+postgres\s+peer/,
+        "local   all   postgres   md5"
+      );
+
+      // Write back the changes using sudo
+      execSync(`echo "${pgHbaContent}" | sudo tee ${pgHbaPath} > /dev/null`);
+
+      console.log("✅ PostgreSQL authentication updated to use password.");
+      console.log("🚀 Restarting PostgreSQL...");
+
+      execSync("sudo systemctl restart postgresql", { stdio: "inherit" });
+      console.log("✅ PostgreSQL restarted.");
+    } else {
+      console.log(
+        "✅ PostgreSQL is already using 'md5' authentication. No changes needed."
+      );
+    }
+  } catch (error) {
+    console.error("❌ Error fixing PostgreSQL authentication:", error.message);
+  }
+}
 
 // ✅ Automated Setup for Dependencies
 async function setupDependencies() {
@@ -172,9 +302,42 @@ async function setupDependencies() {
     } else {
       console.log("✅ Conda is already installed.");
     }
+
+    if (!commandExists("psql")) {
+      installPostgres();
+    } else {
+      console.log("✅ PostgreSQL is already installed.");
+    }
+
+    fixPostgresAuthentication();
+
+    if (!commandExists("ollama")) {
+      installOllama();
+    } else {
+      console.log("✅ Ollama is already installed.");
+    }
   } catch (error) {
     console.error("❌ Error setting up dependencies:", error.message);
     process.exit(1);
+  }
+}
+
+// ✅ Function to Check Ollama Installation
+function installOllama() {
+  if (!commandExists("ollama")) {
+    console.log("🚀 Installing Ollama...");
+
+    const installCmd = isWindows
+      ? "winget install Ollama.Ollama"
+      : "curl -fsSL https://ollama.ai/install.sh | sh";
+
+    try {
+      execSync(installCmd, { shell: true, stdio: "inherit" });
+      console.log("✅ Ollama installed.");
+    } catch (error) {
+      console.error("❌ Error installing Ollama:", error.message);
+      return;
+    }
   }
 }
 
@@ -261,4 +424,6 @@ module.exports = {
   checkPythonDependencies,
   checkBackendProcessesRunning,
   checkPythonProcessesRunning,
+  checkPostgresRunning,
+  checkOllamaRunning,
 };
