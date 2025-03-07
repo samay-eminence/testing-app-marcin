@@ -215,7 +215,7 @@ function checkPostgresRunning() {
   }
 }
 
-// ✅ Function to Start Ollama Service
+// ✅ Function to Start Ollama Service and Ensure Required Models are Pulled
 function checkOllamaRunning(ollamaProcess) {
   try {
     const isRunning = isProcessRunning("ollama");
@@ -226,12 +226,46 @@ function checkOllamaRunning(ollamaProcess) {
         detached: true,
         stdio: "ignore",
       });
+
       ollamaProcess.unref();
 
       console.log("✅ Ollama started on port 11434.");
     } else {
       console.log("✅ Ollama is already running.");
     }
+
+    // ✅ Check Installed Models First
+    console.log("📦 Checking installed models...");
+    let installedModels = [];
+    try {
+      installedModels = execSync("ollama list", { encoding: "utf8" })
+        .split("\n")
+        .slice(1) // Remove the first line (header)
+        .map((line) => line.split(" ")[0].trim()) // Get model names and trim spaces
+        .filter(Boolean); // Remove empty lines
+    } catch (error) {
+      console.error("❌ Failed to check installed models:", error.message);
+    }
+
+    const requiredModels = ["nomic-embed-text", "qwen2.5:1.5b"];
+
+    requiredModels.forEach((model) => {
+      if (
+        installedModels.some((installedModel) =>
+          installedModel.startsWith(model)
+        )
+      ) {
+        console.log(`✅ Model '${model}' is already installed. Skipping pull.`);
+      } else {
+        console.log(`🔄 Pulling model: ${model}...`);
+        try {
+          execSync(`ollama pull ${model}`, { shell: true, stdio: "inherit" });
+          console.log(`✅ Model '${model}' pulled successfully.`);
+        } catch (error) {
+          console.error(`❌ Error pulling model '${model}':`, error.message);
+        }
+      }
+    });
   } catch (error) {
     console.error("❌ Error starting Ollama:", error.message);
   }
@@ -384,7 +418,7 @@ function checkPythonDependencies() {
 }
 
 function checkBackendProcessesRunning(backendProcess) {
-  if (!isProcessRunning("server.js")) {
+  if (!isProcessRunning(path.join(nodejsPath, "server.js"))) {
     backendProcess = spawn("node", [path.join(nodejsPath, "server.js")], {
       detached: true,
       stdio: "ignore",
@@ -397,7 +431,7 @@ function checkBackendProcessesRunning(backendProcess) {
 }
 
 function checkPythonProcessesRunning(pythonProcess) {
-  if (!isProcessRunning("app.py")) {
+  if (!isProcessRunning(path.join(fastapiPath, "app.py"))) {
     pythonProcess = spawn(
       `${condaDir}/bin/conda`,
       ["run", "-n", "myenv", "python", `${fastapiPath}/app.py`],
